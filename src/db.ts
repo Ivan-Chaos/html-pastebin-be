@@ -92,3 +92,7 @@ export function updateSnippet(id: string, patch: SnippetPatch): Snippet | undefi
 export function deleteSnippet(id: string): boolean {
   return deleteStmt.run(id).changes > 0;
 }
+
+export function closeDb(): void {
+  db.close();
+}

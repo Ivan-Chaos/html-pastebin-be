@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import cors from 'cors';
 import crypto from 'node:crypto';
 import {
+  closeDb,
   createSnippet,
   deleteSnippet,
   getSnippet,
@@ -12,6 +13,9 @@ import {
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+if (!process.env.CORS_ORIGIN) {
+  console.warn(`CORS_ORIGIN is not set: only ${CORS_ORIGIN} is allowed. Set it to the web app origin in production.`);
+}
 const ADMIN_KEY = process.env.ADMIN_KEY?.trim() || undefined;
 
 if (!ADMIN_KEY) {
@@ -171,4 +175,17 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Internal error' });
 });
 
-app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+const server = app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+
+// Render (and most hosts) send SIGTERM before stopping the instance on every deploy.
+// Finish in-flight requests, then close SQLite so the WAL is checkpointed cleanly.
+function shutdown(signal: string) {
+  console.log(`${signal} received, shutting down`);
+  server.close(() => {
+    closeDb();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

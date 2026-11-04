@@ -64,10 +64,21 @@ See `.env.example`.
 
 **Next:** wire up `snippets-web` to the paginated `GET /snippets` response, then deploy.
 
-## Deploy
-- Use a host with a **persistent volume**. Set `DB_PATH=/<volume-mount>/snippets.db`, `PORT`, `CORS_ORIGIN=https://<web-domain>`, and `ADMIN_KEY` (as a secret).
-- `better-sqlite3` is a native module, so the host must run `npm install` itself. Never copy `node_modules` from another machine.
-- Run `npm run build`, then `npm start`.
+## Deploy (Render)
+The repo includes a Render Blueprint, `render.yaml`. It defines one Node web service (Node 22, pinned in `.node-version`) with a 1 GB persistent disk mounted at `/var/data`.
+
+1. Push the repo to GitHub or GitLab.
+2. In Render: **New → Blueprint**, then pick the repo. Render reads `render.yaml`.
+3. When prompted, set `CORS_ORIGIN` to the exact web origin, e.g. `https://snippets-web.onrender.com` (no trailing slash). If the web app isn't deployed yet, use a placeholder and update it later in **Environment**. Changing it redeploys the service.
+4. Render generates `ADMIN_KEY`. Copy it from the service's **Environment** tab into `snippets-web`'s server-only env.
+5. The first deploy runs `npm ci --include=dev && npm run build` then `npm start`. Render sets `PORT` and health-checks `/health`.
+
+Notes:
+- **Plan:** a persistent disk needs a paid plan (`starter`). The free plan has no disk, and the DB would be wiped on every deploy.
+- **One instance only.** A service with a disk can't scale out, and deploys have a few seconds of downtime: Render stops the old instance (sending `SIGTERM`, which the app handles by finishing in-flight requests and closing SQLite) before starting the new one.
+- **Backups:** Render snapshots disks daily; restore from the service's **Disks** tab.
+- `better-sqlite3` is a native module and Render builds it on Linux during `npm ci`. Never commit `node_modules`.
+- Other hosts: any host with a persistent volume works. Set `DB_PATH=/<volume-mount>/snippets.db`, `PORT`, `CORS_ORIGIN` and `ADMIN_KEY`, then run `npm ci --include=dev && npm run build && npm start`.
 
 ## Verify (prod)
 - `GET https://<api-domain>/health` returns `{ ok: true }`.
