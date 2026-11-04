@@ -36,8 +36,17 @@ type Field = 'name' | 'content' | 'author';
 const FIELDS: readonly Field[] = ['name', 'content', 'author'];
 type Validated<T> = { value: T } | { error: string };
 
+const DEFAULT_AUTHOR = 'Anonymous';
+
 /** Validates one field; returns the normalized value to store. */
 function validateField(field: Field, raw: unknown): Validated<string> {
+  if (field === 'author') {
+    // Optional: missing, null or blank becomes "Anonymous".
+    if (raw === undefined || raw === null || (typeof raw === 'string' && !raw.trim())) {
+      return { value: DEFAULT_AUTHOR };
+    }
+    if (typeof raw !== 'string') return { error: 'author must be a string' };
+  }
   if (typeof raw !== 'string' || !raw.trim()) return { error: `${field} is required` };
   if (field === 'content') {
     // Content is stored as-is (no trimming/sanitizing); the frontend renders it sandboxed.

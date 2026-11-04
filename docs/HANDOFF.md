@@ -27,7 +27,7 @@ Data must persist across restarts and redeploys.
 | id | TEXT PK | random 10-char base64url, used in the share URL |
 | name | TEXT NOT NULL | required, trimmed, max 200 chars |
 | content | TEXT NOT NULL | required, raw HTML, max 100 KB |
-| author | TEXT NOT NULL | required, trimmed, max 100 chars |
+| author | TEXT NOT NULL | optional, trimmed, max 100 chars; stored as `"Anonymous"` when missing, null or blank |
 | created_at | TEXT NOT NULL | ISO 8601 UTC, set by the DB default (`strftime('%Y-%m-%dT%H:%M:%fZ','now')`) |
 
 - Index on `(created_at DESC, id DESC)` for the paginated gallery (`id` breaks ties so the order is stable).
@@ -45,7 +45,7 @@ Data must persist across restarts and redeploys.
 | `PATCH /snippets/:id` | **Admin only.** Partial update of any of `name, content, author` (same validation as create, at least one field). Returns 200 with the updated snippet. Returns 401 for a missing or wrong key, 400 for invalid input, 404 if the snippet doesn't exist. |
 | `DELETE /snippets/:id` | **Admin only.** Returns 204 on success. Returns 401 for a missing or wrong key, 404 if the snippet doesn't exist. |
 
-- Validation: each field must be a non-empty string after trimming and within its max length.
+- Validation: `name` and `content` must be non-empty strings (after trimming) within their max length. `author` is optional: missing, `null` or blank becomes `"Anonymous"` (on PATCH, sending it blank resets it to `"Anonymous"`), and a non-string returns 400. HTML is **not** validated; it is stored exactly as sent.
 - Body limit: `express.json({ limit: '200kb' })`. Larger requests get a 413.
 - A final error handler logs the error and returns 500 `{ error: 'Internal error' }`, so stack traces never leak.
 
