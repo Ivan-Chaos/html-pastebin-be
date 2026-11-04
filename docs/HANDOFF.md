@@ -16,7 +16,8 @@ Data must persist across restarts and redeploys.
 - **Prepared statements with `?` params only.** Never build SQL by string concatenation.
 - **Random share IDs.** Use a random 10-char base64url ID (from `crypto.randomBytes`), never a sequential ID, so snippets can't be enumerated.
 - **Locked-down CORS.** Allow only the web app's origin, read from `CORS_ORIGIN`. Never `*`.
-- **No auth in scope.** `author` is a plain-text name the user types.
+- **No user auth.** `author` is a plain-text name the user types. The only privileged access is the **admin key** (see below).
+- **Admin key stays server-side.** `ADMIN_KEY` is sent as `Authorization: Bearer <key>` and compared in constant time. Never put it in a query string or in browser code (no `NEXT_PUBLIC_` variable). If it is unset, edit and delete are disabled.
 - **Persistent storage.** In production `DB_PATH` must point at a persistent disk or volume. Hosts with an ephemeral filesystem (many free tiers) wipe the DB on restart.
 - The API stores HTML as-is. Rendering safety (a sandboxed iframe) is the frontend's job, so don't sanitize or alter content here.
 
@@ -41,6 +42,8 @@ Data must persist across restarts and redeploys.
 | `POST /snippets` | Validates the body, then inserts the snippet. Returns 201 with the full snippet, including `id` and `created_at`. Returns 400 `{ error }` on validation failure. |
 | `GET /snippets?page=1&pageSize=20` | Paginated gallery, newest first. Returns `{ items, page, pageSize, total, totalPages }`; `items` are metadata only (`id, name, author, created_at`), without `content`. `page` defaults to 1 and must be ≥ 1. `pageSize` defaults to 20 and must be between 1 and 50. Any other value returns 400. A page past the end returns `items: []`. |
 | `GET /snippets/:id` | Returns the full snippet, or 404 `{ error: 'Not found' }`. |
+| `PATCH /snippets/:id` | **Admin only.** Partial update of any of `name, content, author` (same validation as create, at least one field). Returns 200 with the updated snippet. Returns 401 for a missing or wrong key, 400 for invalid input, 404 if the snippet doesn't exist. |
+| `DELETE /snippets/:id` | **Admin only.** Returns 204 on success. Returns 401 for a missing or wrong key, 404 if the snippet doesn't exist. |
 
 - Validation: each field must be a non-empty string after trimming and within its max length.
 - Body limit: `express.json({ limit: '200kb' })`. Larger requests get a 413.
@@ -52,6 +55,7 @@ Data must persist across restarts and redeploys.
 | `PORT` | `4000` | listen port |
 | `DB_PATH` | `./data/snippets.db` | SQLite file location (must be on a persistent volume in prod) |
 | `CORS_ORIGIN` | `http://localhost:3000` | exact web origin: scheme, host and port, no trailing slash |
+| `ADMIN_KEY` | (32+ random bytes, base64url) | enables `PATCH`/`DELETE` on `/snippets/:id`. Unset means edit/delete are disabled. |
 
 See `.env.example`.
 
@@ -61,7 +65,7 @@ See `.env.example`.
 **Next:** wire up `snippets-web` to the paginated `GET /snippets` response, then deploy.
 
 ## Deploy
-- Use a host with a **persistent volume**. Set `DB_PATH=/<volume-mount>/snippets.db`, `PORT`, and `CORS_ORIGIN=https://<web-domain>`.
+- Use a host with a **persistent volume**. Set `DB_PATH=/<volume-mount>/snippets.db`, `PORT`, `CORS_ORIGIN=https://<web-domain>`, and `ADMIN_KEY` (as a secret).
 - `better-sqlite3` is a native module, so the host must run `npm install` itself. Never copy `node_modules` from another machine.
 - Run `npm run build`, then `npm start`.
 
@@ -75,3 +79,4 @@ See `.env.example`.
 - `invalid ELF header` / `NODE_MODULE_VERSION`: `node_modules` was built on another OS or Node version. Reinstall on the host.
 - `req.body` undefined: the client didn't send `Content-Type: application/json`.
 - 413: the request is over the 200 KB limit.
+- 401 on edit/delete: the `Authorization: Bearer` header is missing, or doesn't match `ADMIN_KEY` (or `ADMIN_KEY` isn't set; a warning is logged at startup).

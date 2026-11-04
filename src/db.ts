@@ -47,6 +47,14 @@ const listPageStmt = db.prepare<[number, number], SnippetMeta>(
 const countStmt = db.prepare<[], { total: number }>(
   `SELECT COUNT(*) AS total FROM snippets`,
 );
+// NULL params leave the column unchanged, so one statement handles any partial update.
+const updateStmt = db.prepare<[string | null, string | null, string | null, string], Snippet>(
+  `UPDATE snippets
+   SET name = COALESCE(?, name), content = COALESCE(?, content), author = COALESCE(?, author)
+   WHERE id = ?
+   RETURNING id, name, content, author, created_at`,
+);
+const deleteStmt = db.prepare<[string]>(`DELETE FROM snippets WHERE id = ?`);
 
 function newId(): string {
   return crypto.randomBytes(8).toString('base64url').slice(0, 10);
@@ -73,3 +81,14 @@ export const listSnippets = db.transaction((page: number, pageSize: number) => {
   const items = listPageStmt.all(pageSize, (page - 1) * pageSize);
   return { items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) };
 });
+
+export type SnippetPatch = Partial<Pick<Snippet, 'name' | 'content' | 'author'>>;
+
+export function updateSnippet(id: string, patch: SnippetPatch): Snippet | undefined {
+  return updateStmt.get(patch.name ?? null, patch.content ?? null, patch.author ?? null, id);
+}
+
+/** Returns true if a snippet was deleted. */
+export function deleteSnippet(id: string): boolean {
+  return deleteStmt.run(id).changes > 0;
+}
